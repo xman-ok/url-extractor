@@ -20,8 +20,8 @@ class LinkExtractorApp:
         self.create_widgets()
 
     def create_widgets(self):
-        # 1. 폴더 선택 섹션
-        folder_frame = tk.LabelFrame(self.root, text=" 1. 대상 폴더 지정 ", padding=10)
+        # 1. 폴더 선택 섹션 (padding -> padx, pady로 수정 완료)
+        folder_frame = tk.LabelFrame(self.root, text=" 1. 대상 폴더 지정 ", padx=10, pady=10)
         folder_frame.pack(fill="x", padx=15, pady=10)
 
         self.entry_path = tk.Entry(
@@ -34,9 +34,9 @@ class LinkExtractorApp:
         )
         btn_browse.pack(side="right")
 
-        # 2. 필터링 섹션
+        # 2. 필터링 섹션 (padding -> padx, pady로 수정 완료)
         filter_frame = tk.LabelFrame(
-            self.root, text=" 2. 제외할 하위 폴더 키워드 ", padding=10
+            self.root, text=" 2. 제외할 하위 폴더 키워드 ", padx=10, pady=10
         )
         filter_frame.pack(fill="x", padx=15, pady=5)
 
@@ -123,7 +123,7 @@ class LinkExtractorApp:
                         else:
                             category_name = rel_path.replace(os.sep, " > ")
 
-                        product_name = os.path.splitext(file)[0]
+                        product_name = os.path.splitext(file)
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
                         ws.append([category_name, product_name, hyperlink_formula])
@@ -136,7 +136,7 @@ class LinkExtractorApp:
             header_font = Font(name="맑은 고딕", size=11, bold=True)
             header_alignment = Alignment(horizontal="center", vertical="center")
 
-            for cell in ws[1]:
+            for cell in ws:
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = header_alignment
@@ -165,7 +165,6 @@ class LinkExtractorApp:
                 f"총 {count}개의 상품 링크 추출 완료!{filter_str}\n\n확인을 누르면 엑셀 파일이 바로 열립니다.",
             )
             
-            # [핵심 수정] 저장된 엑셀 파일을 윈도우 시스템 명령어로 자동 실행
             try:
                 os.startfile(output_path)
             except Exception as e:
