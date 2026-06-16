@@ -67,18 +67,13 @@ class LinkExtractorApp:
             self.selected_path.set(os.path.abspath(folder))
 
     def extract_url_from_file(self, file_path):
-        # 다양한 윈도우/웹 인코딩 방식을 순서대로 대입하며 파일 읽기 시도
-        # cp949(한국어 윈도우 기본), utf-8(기본), utf-16(MS 웹 바로가기 특수 포맷) 전부 대응
         encodings = ["cp949", "utf-8", "utf-16", "utf-8-sig", "latin-1"]
-        
         for encoding in encodings:
             try:
                 with open(file_path, "r", encoding=encoding, errors="ignore") as f:
                     for line in f:
                         clean_line = line.strip()
-                        # 대소문자 구분 없이 URL= 패턴 검색
                         if clean_line.upper().startswith("URL="):
-                            # URL= 뒷부분의 링크만 분리하여 반환
                             parts = clean_line.split("=", 1)
                             if len(parts) > 1:
                                 return parts[1].strip()
@@ -123,14 +118,13 @@ class LinkExtractorApp:
                         else:
                             category_name = rel_path.replace(os.sep, " > ")
 
-                        # [오류 수정 반영] 튜플 분리가 아닌 문자열 정상 추출 완료
+                        # [핵심 수정 1] 튜플 분할 에러 완벽 해결 ([0]번인 상품명 문자열만 명확히 추출)
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
                         ws.append([category_name, product_name, hyperlink_formula])
                         count += 1
 
-        # [진단 안내] 스캔 통계 확인
         messagebox.showinfo(
             "스캔 결과", 
             f"발견된 .url 파일 수: {url_file_found}개\n실제 추출 성공한 링크 수: {count}개"
@@ -138,25 +132,28 @@ class LinkExtractorApp:
 
         if count > 0:
             try:
-                # 헤더 서식 지정
+                # 첫 번째 행 스타일 지정
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
 
-                for cell in ws[1]:  # 첫 번째 행 스타일 지정
+                # 1번째 행의 3개 셀에만 스타일 확정 적용
+                for col_idx in range(1, 4):
+                    cell = ws.cell(row=1, column=col_idx)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = header_alignment
 
-                # 열 너비 자동 조절
+                # [핵심 수정 2] 튜플 에러 발생하던 대상을 엑셀 내장 변수를 활용한 열 너비 맞춤 방식으로 변경
                 for col in ws.columns:
                     max_len = 0
-                    col_letter = col.column_letter
+                    # 열의 문자 이름을 안전하게 가져옴 (예: 1번째 열 -> 'A')
+                    col_letter = col[0].column_letter 
                     for cell in col:
                         if cell.value:
                             val_str = str(cell.value)
                             if val_str.startswith("=HYPERLINK"):
-                                val_str = "https://example.com"
+                                val_str = "https://example.com" # 하이퍼링크 수식 길이 예외 방지
                             byte_len = len(val_str.encode("utf-8"))
                             calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
                             if calc_len > max_len:
@@ -173,17 +170,15 @@ class LinkExtractorApp:
                     f"저장 경로:\n{output_path}\n\n확인을 누르면 엑셀 파일이 열립니다.",
                 )
                 
-                # 파일 자동 열기
                 os.startfile(output_path)
                 
             except Exception as e:
-                # 저장 단계에서 오류 발생 시 팝업으로 상세 내용 표시
                 messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 저장하거나 여는 도중 에러가 발생했습니다:\n{e}")
                 
         else:
             messagebox.showwarning(
                 "실패", 
-                "폴더 안에 바로가기 파일은 있으나, 파일 내부에서 링크 주소(URL=)를 읽어내지 못했습니다.\n파일 손상이나 인코딩을 확인해 주세요."
+                "폴더 안에 바로가기 파일은 있으나, 링크 주소 추출에 실패했습니다."
             )
 
 
