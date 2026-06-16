@@ -67,17 +67,23 @@ class LinkExtractorApp:
             self.selected_path.set(os.path.abspath(folder))
 
     def extract_url_from_file(self, file_path):
-        try:
-            for encoding in ["utf-8", "cp949", "utf-16", "utf-8-sig"]:
-                try:
-                    with open(file_path, "r", encoding=encoding) as f:
-                        for line in f:
-                            if line.strip().startswith("URL="):
-                                return line.strip().split("URL=", 1)[1]
-                except (UnicodeDecodeError, PermissionError):
-                    continue
-        except Exception:
-            pass
+        # 다양한 윈도우/웹 인코딩 방식을 순서대로 대입하며 파일 읽기 시도
+        # cp949(한국어 윈도우 기본), utf-8(기본), utf-16(MS 웹 바로가기 특수 포맷) 전부 대응
+        encodings = ["cp949", "utf-8", "utf-16", "utf-8-sig", "latin-1"]
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, "r", encoding=encoding, errors="ignore") as f:
+                    for line in f:
+                        clean_line = line.strip()
+                        # 대소문자 구분 없이 URL= 패턴 검색
+                        if clean_line.upper().startswith("URL="):
+                            # URL= 뒷부분의 링크만 분리하여 반환
+                            parts = clean_line.split("=", 1)
+                            if len(parts) > 1:
+                                return parts[1].strip()
+            except Exception:
+                continue
         return None
 
     def start_extraction(self):
@@ -90,9 +96,6 @@ class LinkExtractorApp:
         raw_input = self.exclude_words.get()
         exclude_list = [w.strip() for w in raw_input.split(",") if w.strip()]
 
-        # [진단용 팝업 1] 폴더 진입 성공 여부 확인
-        messagebox.showinfo("진단 시작", f"선택한 폴더 내부를 스캔합니다:\n{base_dir}")
-
         wb = Workbook()
         ws = wb.active
         ws.title = "링크 목록"
@@ -101,7 +104,7 @@ class LinkExtractorApp:
         ws.append(headers)
 
         count = 0
-        url_file_found = 0  # .url 파일 발견 개수 카운트
+        url_file_found = 0
 
         for root_dir, dirs, files in os.walk(base_dir):
             if any(word in root_dir for word in exclude_list):
@@ -120,58 +123,67 @@ class LinkExtractorApp:
                         else:
                             category_name = rel_path.replace(os.sep, " > ")
 
+                        # [오류 수정 반영] 튜플 분리가 아닌 문자열 정상 추출 완료
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
                         ws.append([category_name, product_name, hyperlink_formula])
                         count += 1
 
-        # [진단용 팝업 2] 수집 통계 결과 출력
+        # [진단 안내] 스캔 통계 확인
         messagebox.showinfo(
             "스캔 결과", 
             f"발견된 .url 파일 수: {url_file_found}개\n실제 추출 성공한 링크 수: {count}개"
         )
 
         if count > 0:
-            header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
-            header_font = Font(name="맑은 고딕", size=11, bold=True)
-            header_alignment = Alignment(horizontal="center", vertical="center")
-
-            for cell in ws[1]:
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = header_alignment
-
-            for col in ws.columns:
-                max_len = 0
-                col_letter = col.column_letter
-                for cell in col:
-                    if cell.value:
-                        val_str = str(cell.value)
-                        if val_str.startswith("=HYPERLINK"):
-                            val_str = "https://example.com"  # 임시 주소 길이 대체
-                        byte_len = len(val_str.encode("utf-8"))
-                        calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
-                        if calc_len > max_len:
-                            max_len = calc_len
-                ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
-
-            output_path = os.path.join(base_dir, "Link_List.xlsx")
-            wb.save(output_path)
-
-            messagebox.showinfo(
-                "성공",
-                f"저장 경로:\n{output_path}\n\n확인을 누르면 엑셀 파일이 열립니다.",
-            )
-            
             try:
+                # 헤더 서식 지정
+                header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
+                header_font = Font(name="맑은 고딕", size=11, bold=True)
+                header_alignment = Alignment(horizontal="center", vertical="center")
+
+                for cell in ws[1]:  # 첫 번째 행 스타일 지정
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = header_alignment
+
+                # 열 너비 자동 조절
+                for col in ws.columns:
+                    max_len = 0
+                    col_letter = col.column_letter
+                    for cell in col:
+                        if cell.value:
+                            val_str = str(cell.value)
+                            if val_str.startswith("=HYPERLINK"):
+                                val_str = "https://example.com"
+                            byte_len = len(val_str.encode("utf-8"))
+                            calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
+                            if calc_len > max_len:
+                                max_len = calc_len
+                    ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+                # 파일 저장
+                output_path = os.path.join(base_dir, "Link_List.xlsx")
+                wb.save(output_path)
+
+                filter_str = f" (제외: {', '.join(exclude_list)})" if exclude_list else ""
+                messagebox.showinfo(
+                    "성공",
+                    f"저장 경로:\n{output_path}\n\n확인을 누르면 엑셀 파일이 열립니다.",
+                )
+                
+                # 파일 자동 열기
                 os.startfile(output_path)
+                
             except Exception as e:
-                messagebox.showerror("오류", f"파일을 자동으로 여는 중 오류가 발생했습니다:\n{e}")
+                # 저장 단계에서 오류 발생 시 팝업으로 상세 내용 표시
+                messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 저장하거나 여는 도중 에러가 발생했습니다:\n{e}")
                 
         else:
             messagebox.showwarning(
-                "실패", "조건에 맞는 .url 파일이 없거나 링크 추출에 실패했습니다."
+                "실패", 
+                "폴더 안에 바로가기 파일은 있으나, 파일 내부에서 링크 주소(URL=)를 읽어내지 못했습니다.\n파일 손상이나 인코딩을 확인해 주세요."
             )
 
 
