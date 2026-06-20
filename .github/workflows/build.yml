@@ -10,13 +10,13 @@ jobs:
     runs-on: windows-latest 
 
     steps:
-    # 1. Node 24를 공식 지원하는 초최신 릴리즈 패치 버전으로 완전히 강제 지정
+    # 1. Node 24를 완전 공식 지원하는 완전히 새로운 메이저 버전 v5로 전면 교체
     - name: 코드 가져오기
-      uses: actions/checkout@v4.2.2
+      uses: actions/checkout@v5
 
-    # 2. Node 24 환경에서 에러 없이 실행되는 최신 정식 버전으로 변경
+    # 2. Node 24 환경 충돌 문제를 근본적으로 해결한 완전히 새로운 메이저 버전 v6로 전면 교체
     - name: 파이썬 설치
-      uses: actions/setup-python@v5.3.0
+      uses: actions/setup-python@v6
       with:
         python-version: '3.11'
 
