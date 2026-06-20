@@ -19,6 +19,7 @@ class LinkExtractorApp:
         self.create_widgets()
 
     def create_widgets(self):
+        # 1. 폴더 선택 섹션
         folder_frame = tk.LabelFrame(self.root, text=" 1. 대상 폴더 지정 ", padx=10, pady=10)
         folder_frame.pack(fill="x", padx=15, pady=10)
 
@@ -32,6 +33,7 @@ class LinkExtractorApp:
         )
         btn_browse.pack(side="right")
 
+        # 2. 필터링 섹션
         filter_frame = tk.LabelFrame(
             self.root, text=" 2. 제외할 하위 폴더 키워드 ", padx=10, pady=10
         )
@@ -50,6 +52,7 @@ class LinkExtractorApp:
         entry_filter.pack(fill="x", ipady=2)
         entry_filter.insert(0, "품절, 제외, 보류")
 
+        # 3. 실행 버튼 섹션
         btn_start = tk.Button(
             self.root,
             text="엑셀 링크 추출 시작",
@@ -95,12 +98,18 @@ class LinkExtractorApp:
         ws = wb.active
         ws.title = "링크 목록"
         
-        headers = ["카테고리", "상품명", "링크"]
+        # [핵심 수정] 요청하신 14개 열 순서대로 헤더 정의
+        headers = [
+            "카테고리", "상품명", "판매가", "배송비", "공급처", 
+            "원가", "나의 배송비", "포장비", "판매처", "수수료(%)", 
+            "수수료", "부가세", "마진", "마진율"
+        ]
         ws.append(headers)
 
         count = 0
         url_file_found = 0
 
+        # 데이터 탐색 및 수집
         for root_dir, dirs, files in os.walk(base_dir):
             if any(word in root_dir for word in exclude_list):
                 continue
@@ -118,11 +127,29 @@ class LinkExtractorApp:
                         else:
                             category_name = rel_path.replace(os.sep, " > ")
 
-                        # [핵심 수정 1] 튜플 분할 에러 완벽 해결 ([0]번인 상품명 문자열만 명확히 추출)
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
-                        ws.append([category_name, product_name, hyperlink_formula])
+                        # [핵심 수정] 지정하신 순서에 맞춰 데이터 배열 배치 (비어있는 열은 "" 처리)
+                        # 순서: 카테고리, 상품명, 판매가, 배송비, 공급처, 원가, 나의 배송비, 포장비, 판매처, 수수료(%), 수수료, 부가세, 마진, 마진율
+                        row_data = [
+                            category_name,    # 카테고리
+                            product_name,     # 상품명
+                            "",               # 판매가 (비어있음)
+                            "",               # 배송비 (비어있음)
+                            hyperlink_formula,# 공급처 (기존의 링크 열을 하이퍼링크로 삽입)
+                            "",               # 원가 (비어있음)
+                            "",               # 나의 배송비 (비어있음)
+                            "",               # 포장비 (비어있음)
+                            "",               # 판매처 (비어있음)
+                            "",               # 수수료(%) (비어있음)
+                            "",               # 수수료 (비어있음)
+                            "",               # 부가세 (비어있음)
+                            "",               # 마진 (비어있음)
+                            ""                # 마진율 (비어있음)
+                        ]
+                        
+                        ws.append(row_data)
                         count += 1
 
         messagebox.showinfo(
@@ -132,42 +159,40 @@ class LinkExtractorApp:
 
         if count > 0:
             try:
-                # 첫 번째 행 스타일 지정
+                # 첫 번째 행 스타일 지정 (14개 모든 열에 적용)
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
 
-                # 1번째 행의 3개 셀에만 스타일 확정 적용
-                for col_idx in range(1, 4):
+                for col_idx in range(1, len(headers) + 1):
                     cell = ws.cell(row=1, column=col_idx)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = header_alignment
 
-                # [핵심 수정 2] 튜플 에러 발생하던 대상을 엑셀 내장 변수를 활용한 열 너비 맞춤 방식으로 변경
+                # 열 너비 자동 조절 (14개 열 전체 순회)
                 for col in ws.columns:
                     max_len = 0
-                    # 열의 문자 이름을 안전하게 가져옴 (예: 1번째 열 -> 'A')
-                    col_letter = col[0].column_letter 
+                    col_letter = col.column_letter 
                     for cell in col:
                         if cell.value:
                             val_str = str(cell.value)
                             if val_str.startswith("=HYPERLINK"):
-                                val_str = "https://example.com" # 하이퍼링크 수식 길이 예외 방지
+                                val_str = "https://example.com"
                             byte_len = len(val_str.encode("utf-8"))
                             calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
                             if calc_len > max_len:
                                 max_len = calc_len
-                    ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+                    # 비어 있는 수기 입력 열들도 헤더 글자가 잘리지 않도록 최소 너비 보장
+                    ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
                 # 파일 저장
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 wb.save(output_path)
 
-                filter_str = f" (제외: {', '.join(exclude_list)})" if exclude_list else ""
                 messagebox.showinfo(
                     "성공",
-                    f"저장 경로:\n{output_path}\n\n확인을 누르면 엑셀 파일이 열립니다.",
+                    f"저장 경로:\n{output_path}\n\n확인을 누르면 마진 계산서 양식의 엑셀 파일이 열립니다.",
                 )
                 
                 os.startfile(output_path)
