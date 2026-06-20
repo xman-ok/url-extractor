@@ -9,12 +9,15 @@ jobs:
   build:
     runs-on: windows-latest 
 
+    # [핵심 수정] 깃허브 공식 문서 가이드 반영
+    # 내부 액션들을 Node 24 환경으로 강제 수용시켜 경고 메시지를 완전히 소멸시킵니다.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
     steps:
-    # 1. Node 24 완벽 지원 메이저 버전
     - name: 코드 가져오기
       uses: actions/checkout@v5
 
-    # 2. Node 24 완벽 지원 메이저 버전
     - name: 파이썬 설치
       uses: actions/setup-python@v6
       with:
@@ -29,7 +32,6 @@ jobs:
       run: |
         pyinstaller --onefile --windowed main.py
 
-    # 3. [핵심 수정] Node 24 호환 모듈인 v4.6.0 최신 규격으로 업그레이드
     - name: 완성된 파일 업로드
       uses: actions/upload-artifact@v4.6.0
       with:
