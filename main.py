@@ -1,4 +1,4 @@
-pythonimport os
+import os
 import re
 import time
 from tkinter import filedialog, messagebox
