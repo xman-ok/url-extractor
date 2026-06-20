@@ -10,11 +10,11 @@ jobs:
     runs-on: windows-latest 
 
     steps:
-    # 1. Node 24를 완전 공식 지원하는 완전히 새로운 메이저 버전 v5로 전면 교체
+    # 1. Node 24 완벽 지원 메이저 버전
     - name: 코드 가져오기
       uses: actions/checkout@v5
 
-    # 2. Node 24 환경 충돌 문제를 근본적으로 해결한 완전히 새로운 메이저 버전 v6로 전면 교체
+    # 2. Node 24 완벽 지원 메이저 버전
     - name: 파이썬 설치
       uses: actions/setup-python@v6
       with:
@@ -29,9 +29,9 @@ jobs:
       run: |
         pyinstaller --onefile --windowed main.py
 
-
+    # 3. [핵심 수정] Node 24 호환 모듈인 v4.6.0 최신 규격으로 업그레이드
     - name: 완성된 파일 업로드
-      uses: actions/upload-artifact@v4.4.0  # <- 세부 패치 버전 명시 완료
+      uses: actions/upload-artifact@v4.6.0
       with:
         name: URL_Link_Extractor_EXE
         path: dist/main.exe
