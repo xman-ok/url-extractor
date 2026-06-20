@@ -1,16 +1,22 @@
 import os
+import time
 from tkinter import filedialog, messagebox
 import tkinter as tk
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter  # [핵심 수정] 안전한 열 문자 변환 함수 추가
+from openpyxl.utils import get_column_letter
+
+# 웹 크롤링을 위해 새롭게 도입된 라이브러리
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
 
 
 class LinkExtractorApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("인터넷 바로가기(.url) 링크 추출기")
+        self.root.title("인터넷 바로가기(.url) 링크 & 가격 추출기")
         self.root.geometry("550x260")
         self.root.resizable(False, False)
 
@@ -40,13 +46,6 @@ class LinkExtractorApp:
         )
         filter_frame.pack(fill="x", padx=15, pady=5)
 
-        lbl_desc = tk.Label(
-            filter_frame,
-            text="제외할 폴더명을 입력하세요 (여러 개는 쉼표[,]로 구분):",
-            fg="gray",
-        )
-        lbl_desc.pack(anchor="w", pady=(0, 5))
-
         entry_filter = tk.Entry(
             filter_frame, textvariable=self.exclude_words, width=58
         )
@@ -56,7 +55,7 @@ class LinkExtractorApp:
         # 3. 실행 버튼 섹션
         btn_start = tk.Button(
             self.root,
-            text="엑셀 링크 추출 시작",
+            text="폐쇄몰 로그인 및 링크·가격 일괄 추출",
             font=("맑은 고딕", 11, "bold"),
             bg="#2ecc71",
             fg="white",
@@ -80,7 +79,7 @@ class LinkExtractorApp:
                         if clean_line.upper().startswith("URL="):
                             parts = clean_line.split("=", 1)
                             if len(parts) > 1:
-                                return parts[1].strip()
+                                return parts.strip()
             except Exception:
                 continue
         return None
@@ -95,6 +94,29 @@ class LinkExtractorApp:
         raw_input = self.exclude_words.get()
         exclude_list = [w.strip() for w in raw_input.split(",") if w.strip()]
 
+        # ---- [웹 브라우저 제어 시작] ----
+        messagebox.showinfo(
+            "로그인 안내",
+            "확인을 누르면 크롬 브라우저가 열립니다.\n\n"
+            "사이트 가입 아이디로 로그인을 완전히 완료하신 후에,\n"
+            "다시 이 프로그램 창으로 돌아와 [확인]을 눌러주세요.",
+        )
+
+        try:
+            options = webdriver.ChromeOptions()
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option("useAutomationExtension", False)
+            
+            driver = webdriver.Chrome(options=options)
+            # 수집 대상 도메인 로그인 페이지 자동 이동
+            driver.get("https://imweb.me") 
+        except Exception as e:
+            messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n크롬이 설치되어 있는지 확인하세요.\n{e}")
+            return
+
+        # 사용자가 브라우저에서 직접 로그인을 진행할 때까지 멈추고 대기(대화상자 보류 상태 활용)
+        messagebox.showinfo("대기 중", "로그인을 마쳤다면 이 창의 [확인]을 누르세요. 추출을 시작합니다.")
+
         wb = Workbook()
         ws = wb.active
         ws.title = "링크 목록"
@@ -107,7 +129,6 @@ class LinkExtractorApp:
         ws.append(headers)
 
         count = 0
-        url_file_found = 0
 
         # 데이터 탐색 및 수집
         for root_dir, dirs, files in os.walk(base_dir):
@@ -116,49 +137,40 @@ class LinkExtractorApp:
 
             for file in files:
                 if file.lower().endswith(".url"):
-                    url_file_found += 1
                     file_path = os.path.join(root_dir, file)
                     url = self.extract_url_from_file(file_path)
 
-                    if url:
+                    if url and "jy45321.imweb.me" in url:  # 지정된 도메인 링크만 크롤링 시도
                         rel_path = os.path.relpath(root_dir, base_dir)
-                        if rel_path == ".":
-                            category_name = "최상위 폴더"
-                        else:
-                            category_name = rel_path.replace(os.sep, " > ")
-
-                        # 확장자를 제외한 순수 파일명(상품명)만 문자열로 안전하게 추출
-                        product_name = os.path.splitext(file)[0]
+                        category_name = "최상위 폴더" if rel_path == "." else rel_path.replace(os.sep, " > ")
+                        product_name = os.path.splitext(file)
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
+                        # 브라우저 원격 이동 및 가격 수집
+                        price_val = ""
+                        try:
+                            driver.get(url)
+                            time.sleep(1.5)  # 페이지 로딩 안전 대기 시간
+                            
+                            # 아임웹 솔루션의 표준 실시간 가격 태그 위치 추적 (추후 타겟팅용)
+                            price_element = driver.find_element(By.CSS_Split, "span.shop_item_price")
+                            # "원", "," 등을 떼어내고 순수 숫자만 필터링하여 정제
+                            price_val = price_element.text.replace("원", "").replace(",", "").strip()
+                        except Exception:
+                            price_val = "오류(재확인)"  # 수집 실패 시 예외 처리
+
                         row_data = [
-                            category_name,     # 카테고리
-                            product_name,      # 상품명
-                            "",                # 판매가
-                            "",                # 배송비
-                            hyperlink_formula, # 공급처
-                            "",                # 원가
-                            "",                # 나의 배송비
-                            "",                # 포장비
-                            "",                # 판매처
-                            "",                # 수수료(%)
-                            "",                # 수수료
-                            "",                # 부가세
-                            "",                # 마진
-                            ""                 # 마진율
+                            category_name, product_name, price_val, "", hyperlink_formula,
+                            "", "", "", "", "", "", "", "", ""
                         ]
-                        
                         ws.append(row_data)
                         count += 1
 
-        messagebox.showinfo(
-            "스캔 결과", 
-            f"발견된 .url 파일 수: {url_file_found}개\n실제 추출 성공한 링크 수: {count}개"
-        )
+        driver.quit()  # 작업 완료 후 가상 브라우저 종료
 
         if count > 0:
             try:
-                # 첫 번째 행 스타일 지정
+                # 서식 지정 및 너비 조절 코드
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
@@ -169,13 +181,9 @@ class LinkExtractorApp:
                     cell.font = header_font
                     cell.alignment = header_alignment
 
-                # [핵심 수정] 튜플 에러 근본적 방지 문법으로 전면 교체
-                # 가변적인 col.column_letter 대신 인덱스 번호를 직접 문자로 변환하는 표준 방식 적용
                 for col_idx in range(1, len(headers) + 1):
                     max_len = 0
-                    col_letter = get_column_letter(col_idx)  # 예: 1 -> 'A', 5 -> 'E'
-                    
-                    # 해당 열의 모든 행 값을 정확히 조회
+                    col_letter = get_column_letter(col_idx)
                     for row_idx in range(1, ws.max_row + 1):
                         cell_value = ws.cell(row=row_idx, column=col_idx).value
                         if cell_value:
@@ -186,28 +194,16 @@ class LinkExtractorApp:
                             calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
                             if calc_len > max_len:
                                 max_len = calc_len
-                                
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-                # 파일 저장
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 wb.save(output_path)
-
-                messagebox.showinfo(
-                    "성공",
-                    f"저장 경로:\n{output_path}\n\n확인을 누르면 마진 계산서 양식의 엑셀 파일이 열립니다.",
-                )
-                
+                messagebox.showinfo("성공", f"가격 정보 수집 완료!\n\n저장 경로:\n{output_path}")
                 os.startfile(output_path)
-                
             except Exception as e:
-                messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 저장하거나 여는 도중 에러가 발생했습니다:\n{e}")
-                
+                messagebox.showerror("오류", f"에러 발생: {e}")
         else:
-            messagebox.showwarning(
-                "실패", 
-                "폴더 안에 바로가기 파일은 있으나, 링크 주소 추출에 실패했습니다."
-            )
+            messagebox.showwarning("실패", "수집된 올바른 타겟 도메인 .url 파일이 없습니다.")
 
 
 if __name__ == "__main__":
