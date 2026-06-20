@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter  # [핵심 수정] 안전한 열 문자 변환 함수 추가
 
 
 class LinkExtractorApp:
@@ -98,7 +99,6 @@ class LinkExtractorApp:
         ws = wb.active
         ws.title = "링크 목록"
         
-        # [핵심 수정] 요청하신 14개 열 순서대로 헤더 정의
         headers = [
             "카테고리", "상품명", "판매가", "배송비", "공급처", 
             "원가", "나의 배송비", "포장비", "판매처", "수수료(%)", 
@@ -127,26 +127,25 @@ class LinkExtractorApp:
                         else:
                             category_name = rel_path.replace(os.sep, " > ")
 
+                        # 확장자를 제외한 순수 파일명(상품명)만 문자열로 안전하게 추출
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
-                        # [핵심 수정] 지정하신 순서에 맞춰 데이터 배열 배치 (비어있는 열은 "" 처리)
-                        # 순서: 카테고리, 상품명, 판매가, 배송비, 공급처, 원가, 나의 배송비, 포장비, 판매처, 수수료(%), 수수료, 부가세, 마진, 마진율
                         row_data = [
-                            category_name,    # 카테고리
-                            product_name,     # 상품명
-                            "",               # 판매가 (비어있음)
-                            "",               # 배송비 (비어있음)
-                            hyperlink_formula,# 공급처 (기존의 링크 열을 하이퍼링크로 삽입)
-                            "",               # 원가 (비어있음)
-                            "",               # 나의 배송비 (비어있음)
-                            "",               # 포장비 (비어있음)
-                            "",               # 판매처 (비어있음)
-                            "",               # 수수료(%) (비어있음)
-                            "",               # 수수료 (비어있음)
-                            "",               # 부가세 (비어있음)
-                            "",               # 마진 (비어있음)
-                            ""                # 마진율 (비어있음)
+                            category_name,     # 카테고리
+                            product_name,      # 상품명
+                            "",                # 판매가
+                            "",                # 배송비
+                            hyperlink_formula, # 공급처
+                            "",                # 원가
+                            "",                # 나의 배송비
+                            "",                # 포장비
+                            "",                # 판매처
+                            "",                # 수수료(%)
+                            "",                # 수수료
+                            "",                # 부가세
+                            "",                # 마진
+                            ""                 # 마진율
                         ]
                         
                         ws.append(row_data)
@@ -159,7 +158,7 @@ class LinkExtractorApp:
 
         if count > 0:
             try:
-                # 첫 번째 행 스타일 지정 (14개 모든 열에 적용)
+                # 첫 번째 행 스타일 지정
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
@@ -170,20 +169,24 @@ class LinkExtractorApp:
                     cell.font = header_font
                     cell.alignment = header_alignment
 
-                # 열 너비 자동 조절 (14개 열 전체 순회)
-                for col in ws.columns:
+                # [핵심 수정] 튜플 에러 근본적 방지 문법으로 전면 교체
+                # 가변적인 col.column_letter 대신 인덱스 번호를 직접 문자로 변환하는 표준 방식 적용
+                for col_idx in range(1, len(headers) + 1):
                     max_len = 0
-                    col_letter = col.column_letter 
-                    for cell in col:
-                        if cell.value:
-                            val_str = str(cell.value)
+                    col_letter = get_column_letter(col_idx)  # 예: 1 -> 'A', 5 -> 'E'
+                    
+                    # 해당 열의 모든 행 값을 정확히 조회
+                    for row_idx in range(1, ws.max_row + 1):
+                        cell_value = ws.cell(row=row_idx, column=col_idx).value
+                        if cell_value:
+                            val_str = str(cell_value)
                             if val_str.startswith("=HYPERLINK"):
                                 val_str = "https://example.com"
                             byte_len = len(val_str.encode("utf-8"))
                             calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
                             if calc_len > max_len:
                                 max_len = calc_len
-                    # 비어 있는 수기 입력 열들도 헤더 글자가 잘리지 않도록 최소 너비 보장
+                                
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
                 # 파일 저장
