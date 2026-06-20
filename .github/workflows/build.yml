@@ -3,18 +3,20 @@ name: Build EXE File
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # 버튼을 눌러서 수동으로도 실행 가능하게 설정
+  workflow_dispatch: 
 
 jobs:
   build:
-    runs-on: windows-latest # 마이크로소프트의 윈도우 클라우드 컴퓨터를 빌림
+    runs-on: windows-latest 
 
     steps:
+    # Node 24 환경을 지원하는 최신 빌드 액션 버전으로 교체 완료
     - name: 코드 가져오기
-      uses: actions/checkout@v4
+      uses: actions/checkout@v4.2.2
 
+    # Node 24 환경을 지원하는 최신 파이썬 세팅 버전으로 교체 완료
     - name: 파이썬 설치
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v5.3.0
       with:
         python-version: '3.11'
 
