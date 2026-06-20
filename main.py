@@ -1,4 +1,5 @@
-import os
+pythonimport os
+import re
 import time
 from tkinter import filedialog, messagebox
 import tkinter as tk
@@ -6,10 +7,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-# 웹 크롤링을 위해 새롭게 도입된 라이브러리
+# 웹 크롤링을 위한 최신 규격 라이브러리
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 
 
 class LinkExtractorApp:
@@ -55,7 +55,7 @@ class LinkExtractorApp:
         # 3. 실행 버튼 섹션
         btn_start = tk.Button(
             self.root,
-            text="폐쇄몰 로그인 및 링크·가격 일괄 추출",
+            text="폐쇄몰 로그인 및 링크·단가 일괄 추출",
             font=("맑은 고딕", 11, "bold"),
             bg="#2ecc71",
             fg="white",
@@ -94,7 +94,7 @@ class LinkExtractorApp:
         raw_input = self.exclude_words.get()
         exclude_list = [w.strip() for w in raw_input.split(",") if w.strip()]
 
-        # ---- [웹 브라우저 제어 시작] ----
+        # ---- [웹 브라우저 제어 및 반자동 로그인 대기] ----
         messagebox.showinfo(
             "로그인 안내",
             "확인을 누르면 크롬 브라우저가 열립니다.\n\n"
@@ -108,13 +108,11 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
-            # 수집 대상 도메인 로그인 페이지 자동 이동
             driver.get("https://imweb.me") 
         except Exception as e:
-            messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n크롬이 설치되어 있는지 확인하세요.\n{e}")
+            messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
             return
 
-        # 사용자가 브라우저에서 직접 로그인을 진행할 때까지 멈추고 대기(대화상자 보류 상태 활용)
         messagebox.showinfo("대기 중", "로그인을 마쳤다면 이 창의 [확인]을 누르세요. 추출을 시작합니다.")
 
         wb = Workbook()
@@ -140,37 +138,74 @@ class LinkExtractorApp:
                     file_path = os.path.join(root_dir, file)
                     url = self.extract_url_from_file(file_path)
 
-                    if url and "jy45321.imweb.me" in url:  # 지정된 도메인 링크만 크롤링 시도
+                    if url and "jy45321.imweb.me" in url:
                         rel_path = os.path.relpath(root_dir, base_dir)
                         category_name = "최상위 폴더" if rel_path == "." else rel_path.replace(os.sep, " > ")
                         product_name = os.path.splitext(file)
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
-                        # 브라우저 원격 이동 및 가격 수집
-                        price_val = ""
+                        # 브라우저 페이지 크롤링 및 텍스트 파싱
+                        cost_val = ""         # 원가
+                        delivery_fee_val = "" # 배송비
+                        
                         try:
                             driver.get(url)
-                            time.sleep(1.5)  # 페이지 로딩 안전 대기 시간
+                            time.sleep(1.8)  # 로딩 안전대기 시간 소폭 상향
                             
-                            # 아임웹 솔루션의 표준 실시간 가격 태그 위치 추적 (추후 타겟팅용)
-                            price_element = driver.find_element(By.CSS_Split, "span.shop_item_price")
-                            # "원", "," 등을 떼어내고 순수 숫자만 필터링하여 정제
-                            price_val = price_element.text.replace("원", "").replace(",", "").strip()
-                        except Exception:
-                            price_val = "오류(재확인)"  # 수집 실패 시 예외 처리
+                            # 페이지 전체 텍스트 소스 가져오기
+                            page_text = driver.find_element(By.TAG_NAME, "body").text
+                            
+                            # 1) 원가 파싱: '총 상품금액' 뒤에 등장하는 첫 번째 숫자 세트 검색
+                            if "총 상품금액" in page_text:
+                                cost_part = page_text.split("총 상품금액", 1)[1]
+                                # 공백이나 기호 뒤에 나오는 연속된 숫자 및 쉼표 검색
+                                cost_match = re.search(r'[\d,]+', cost_part)
+                                if cost_match:
+                                    cost_val = cost_match.group().replace(",", "").strip()
+                            
+                            # 만약 옵션 선택 전이라 총 상품금액이 표기 안 되었다면 기본가 대체 검색
+                            if not cost_val:
+                                try:
+                                    price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
+                                    cost_val = price_element.text.replace("원", "").replace(",", "").strip()
+                                except:
+                                    pass
 
+                            # 2) 배송비 파싱: '기본' 텍스트 뒤에 등장하는 정보 분석
+                            if "기본" in page_text:
+                                delivery_part = page_text.split("기본", 1)[1].strip()
+                                # '기본' 글자 직후 15자 내에 '무료' 혹은 숫자 패턴이 오는지 분기 분석
+                                target_area = delivery_part[:15]
+                                
+                                if "무료" in target_area:
+                                    delivery_fee_val = 0  # 무료인 경우 숫자 0 입력
+                                else:
+                                    deliv_match = re.search(r'[\d,]+', target_area)
+                                    if deliv_match:
+                                        delivery_fee_val = deliv_match.group().replace(",", "").strip()
+                                        
+                        except Exception:
+                            cost_val = "오류(재확인)"
+                            delivery_fee_val = "오류"
+
+                        # 요청 순서 매핑: 카테고리, 상품명, 판매가(비어둠), 배송비, 공급처, 원가...
                         row_data = [
-                            category_name, product_name, price_val, "", hyperlink_formula,
-                            "", "", "", "", "", "", "", "", ""
+                            category_name,     # 카테고리
+                            product_name,      # 상품명
+                            "",                # 판매가
+                            delivery_fee_val,  # 배송비 (정제 데이터)
+                            hyperlink_formula, # 공급처
+                            cost_val,          # 원가 (정제 데이터)
+                            "", "", "", "", "", "", "", "" # 나머지 수기 작성란 공백
                         ]
                         ws.append(row_data)
                         count += 1
 
-        driver.quit()  # 작업 완료 후 가상 브라우저 종료
+        driver.quit()  # 브라우저 안전 종료
 
         if count > 0:
             try:
-                # 서식 지정 및 너비 조절 코드
+                # 첫 번째 행 스타일 지정
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
@@ -181,6 +216,7 @@ class LinkExtractorApp:
                     cell.font = header_font
                     cell.alignment = header_alignment
 
+                # 안전한 열 너비 맞춤 서식
                 for col_idx in range(1, len(headers) + 1):
                     max_len = 0
                     col_letter = get_column_letter(col_idx)
@@ -196,9 +232,10 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
+                # 파일 저장
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 wb.save(output_path)
-                messagebox.showinfo("성공", f"가격 정보 수집 완료!\n\n저장 경로:\n{output_path}")
+                messagebox.showinfo("성공", f"원가 및 배송비 매핑 완료!\n\n저장 경로:\n{output_path}")
                 os.startfile(output_path)
             except Exception as e:
                 messagebox.showerror("오류", f"에러 발생: {e}")
