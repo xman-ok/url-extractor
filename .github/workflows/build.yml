@@ -29,8 +29,9 @@ jobs:
       run: |
         pyinstaller --onefile --windowed main.py
 
+
     - name: 완성된 파일 업로드
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4.4.0  # <- 세부 패치 버전 명시 완료
       with:
         name: URL_Link_Extractor_EXE
         path: dist/main.exe
