@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-# 웹 크롤링을 위한 최신 규격 라이브러리
+# 웹 크롤링 표준 라이브러리
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
@@ -79,7 +79,7 @@ class LinkExtractorApp:
                         if clean_line.upper().startswith("URL="):
                             parts = clean_line.split("=", 1)
                             if len(parts) > 1:
-                                return parts.strip()
+                                return parts[1].strip()
             except Exception:
                 continue
         return None
@@ -108,7 +108,7 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
-            driver.get("https://jy45321.imweb.me") 
+            driver.get("https://imweb.me") 
         except Exception as e:
             messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
             return
@@ -127,6 +127,7 @@ class LinkExtractorApp:
         ws.append(headers)
 
         count = 0
+        url_file_found = 0
 
         # 데이터 탐색 및 수집
         for root_dir, dirs, files in os.walk(base_dir):
@@ -135,35 +136,34 @@ class LinkExtractorApp:
 
             for file in files:
                 if file.lower().endswith(".url"):
+                    url_file_found += 1
                     file_path = os.path.join(root_dir, file)
                     url = self.extract_url_from_file(file_path)
 
-                    if url and "jy45321.imweb.me" in url:
+                    if url and "jy45321.imweb.me" in url.lower():
                         rel_path = os.path.relpath(root_dir, base_dir)
                         category_name = "최상위 폴더" if rel_path == "." else rel_path.replace(os.sep, " > ")
-                        product_name = os.path.splitext(file)
+                        
+                        # 튜플 에러 방지 처리 완료 (순수 문자열 상품명 분리)
+                        product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
-                        # 브라우저 페이지 크롤링 및 텍스트 파싱
-                        cost_val = ""         # 원가
-                        delivery_fee_val = "" # 배송비
+                        cost_val = ""         
+                        delivery_fee_val = "" 
                         
                         try:
                             driver.get(url)
-                            time.sleep(1.8)  # 로딩 안전대기 시간 소폭 상향
+                            time.sleep(1.8)  
                             
-                            # 페이지 전체 텍스트 소스 가져오기
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
-                            # 1) 원가 파싱: '총 상품금액' 뒤에 등장하는 첫 번째 숫자 세트 검색
+                            # 1) 원가 파싱: '총 상품금액' 추적
                             if "총 상품금액" in page_text:
                                 cost_part = page_text.split("총 상품금액", 1)[1]
-                                # 공백이나 기호 뒤에 나오는 연속된 숫자 및 쉼표 검색
                                 cost_match = re.search(r'[\d,]+', cost_part)
                                 if cost_match:
                                     cost_val = cost_match.group().replace(",", "").strip()
                             
-                            # 만약 옵션 선택 전이라 총 상품금액이 표기 안 되었다면 기본가 대체 검색
                             if not cost_val:
                                 try:
                                     price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
@@ -171,14 +171,13 @@ class LinkExtractorApp:
                                 except:
                                     pass
 
-                            # 2) 배송비 파싱: '기본' 텍스트 뒤에 등장하는 정보 분석
+                            # 2) 배송비 파싱: '기본' 추적 및 무료 분기
                             if "기본" in page_text:
                                 delivery_part = page_text.split("기본", 1)[1].strip()
-                                # '기본' 글자 직후 15자 내에 '무료' 혹은 숫자 패턴이 오는지 분기 분석
                                 target_area = delivery_part[:15]
                                 
                                 if "무료" in target_area:
-                                    delivery_fee_val = 0  # 무료인 경우 숫자 0 입력
+                                    delivery_fee_val = 0  
                                 else:
                                     deliv_match = re.search(r'[\d,]+', target_area)
                                     if deliv_match:
@@ -188,24 +187,17 @@ class LinkExtractorApp:
                             cost_val = "오류(재확인)"
                             delivery_fee_val = "오류"
 
-                        # 요청 순서 매핑: 카테고리, 상품명, 판매가(비어둠), 배송비, 공급처, 원가...
                         row_data = [
-                            category_name,     # 카테고리
-                            product_name,      # 상품명
-                            "",                # 판매가
-                            delivery_fee_val,  # 배송비 (정제 데이터)
-                            hyperlink_formula, # 공급처
-                            cost_val,          # 원가 (정제 데이터)
-                            "", "", "", "", "", "", "", "" # 나머지 수기 작성란 공백
+                            category_name, product_name, "", delivery_fee_val, hyperlink_formula,
+                            cost_val, "", "", "", "", "", "", "", ""
                         ]
                         ws.append(row_data)
                         count += 1
 
-        driver.quit()  # 브라우저 안전 종료
+        driver.quit()  
 
         if count > 0:
             try:
-                # 첫 번째 행 스타일 지정
                 header_fill = PatternFill(start_color="EFEFEF", end_color="EFEFEF", fill_type="solid")
                 header_font = Font(name="맑은 고딕", size=11, bold=True)
                 header_alignment = Alignment(horizontal="center", vertical="center")
@@ -216,7 +208,6 @@ class LinkExtractorApp:
                     cell.font = header_font
                     cell.alignment = header_alignment
 
-                # 안전한 열 너비 맞춤 서식
                 for col_idx in range(1, len(headers) + 1):
                     max_len = 0
                     col_letter = get_column_letter(col_idx)
@@ -224,7 +215,7 @@ class LinkExtractorApp:
                         cell_value = ws.cell(row=row_idx, column=col_idx).value
                         if cell_value:
                             val_str = str(cell_value)
-                            if val_str.startswith("=HYPERLINK"):
+                            if val_str.startswith("="):
                                 val_str = "https://example.com"
                             byte_len = len(val_str.encode("utf-8"))
                             calc_len = (byte_len - len(val_str)) / 2 + len(val_str)
@@ -232,19 +223,23 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-                # 파일 저장
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 wb.save(output_path)
-                messagebox.showinfo("성공", f"원가 및 배송비 매핑 완료!\n\n저장 경로:\n{output_path}")
+                messagebox.showinfo(
+                    "성공", 
+                    f"총 {count}개의 데이터 및 단가 추출 완료!\n\n확인을 누르면 마진 계산서 양식의 엑셀 파일이 열립니다."
+                )
                 os.startfile(output_path)
             except Exception as e:
-                messagebox.showerror("오류", f"에러 발생: {e}")
+                messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 저장하거나 여는 도중 에러가 발생했습니다:\n{e}")
         else:
-            messagebox.showwarning("실패", "수집된 올바른 타겟 도메인 .url 파일이 없습니다.")
+            messagebox.showwarning(
+                "실패", 
+                f"스캔된 총 {url_file_found}개의 .url 파일 중 타겟 폐쇄몰 도메인 주소(jy45321.imweb.me)와 일치하는 유효 링크가 없거나 주소를 읽지 못했습니다."
+            )
 
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = LinkExtractorApp(root)
     root.mainloop()
-    
