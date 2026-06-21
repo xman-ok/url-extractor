@@ -10,9 +10,11 @@ jobs:
     runs-on: windows-latest 
 
     steps:
+    # 1. Node 24 정식 지원 메이저 버전
     - name: 코드 가져오기
       uses: actions/checkout@v5
 
+    # 2. Node 24 정식 지원 메이저 버전
     - name: 파이썬 설치
       uses: actions/setup-python@v6
       with:
@@ -24,12 +26,13 @@ jobs:
         pip install openpyxl pyinstaller selenium requests
 
     - name: EXE 파일로 빌드
+      # 내 컴퓨터에서 셀레니움 엔진이 누락되지 않도록 철저하게 묶어주는 옵션 유지
       run: |
         pyinstaller --onefile --windowed --hidden-import=selenium --hidden-import=selenium.webdriver --hidden-import=selenium.webdriver.chrome.webdriver --hidden-import=selenium.webdriver.chrome.options --hidden-import=selenium.webdriver.common.by main.py
 
-    # [핵심 수정] Node 24와 100% 호환되어 경고를 발생시키지 않는 최신 업로드 표준 포맷으로 전면 개편
+    # 3. [핵심 수정] Node 24 환경을 완벽하게 정식 수용하는 v6 정식 버전으로 변경
     - name: 완성된 파일 업로드
-      uses: actions/upload-artifact@v4-node24
+      uses: actions/upload-artifact@v6
       with:
         name: URL_Link_Extractor_EXE
         path: dist/main.exe
