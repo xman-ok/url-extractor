@@ -109,7 +109,6 @@ class LinkExtractorApp:
                 continue
         return None
 
-    # ★ 이 부분의 들여쓰기(공백 4칸)를 수정했습니다.
     def start_extraction(self):
         base_dir = self.selected_path.get()
         current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
@@ -135,6 +134,7 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
+            # ★ 요청하신 대로 대기용 첫 접속 주소를 폐쇄몰 메인 도메인으로 즉시 변경했습니다.
             driver.get("https://jy45321.imweb.me") 
         except Exception as e:
             messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
@@ -190,14 +190,20 @@ class LinkExtractorApp:
                             # 실시간 화면 전체 텍스트 수집
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
-                            # 1) 원가 파싱: '총 상품금액' 추적
+                            # 1) 원가 파싱: '총 상품금액' 추적 및 괄호 수량 건너뛰기 규칙 적용
                             if "총 상품금액" in page_text:
                                 cost_part = page_text.split("총 상품금액", 1)[1]
-                                cost_match = re.search(r'[\d,]+', cost_part)
+                                # (1개), (2개) 뒤에 나오는 진짜 원가 숫자만 타겟팅
+                                cost_match = re.search(r'\(\d+개\)\s*([\d,]+)', cost_part)
                                 if cost_match:
-                                    cost_val = cost_match.group().replace(",", "").strip()
+                                    cost_val = cost_match.group(1).replace(",", "").strip()
+                                else:
+                                    # 만약 옵션을 안 골라서 (X개) 표시가 없을 때를 대비한 백업용 기존 파싱
+                                    cost_match = re.search(r'[\d,]+', cost_part)
+                                    if cost_match:
+                                        cost_val = cost_match.group().replace(",", "").strip()
                             
-                            # 자동 모드이거나 옵션을 선택하지 않아 '총 상품금액'이 없을 때 기본가 수집
+                            # 자동 모드이거나 옵션을 선택하지 않아 '총 상품금액'이 아예 없을 때 기본가 수집
                             if not cost_val or cost_val == "0":
                                 try:
                                     price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
