@@ -108,7 +108,7 @@ class LinkExtractorApp:
             except Exception:
                 continue
         return None
-        def start_extraction(self):
+def start_extraction(self):
         base_dir = self.selected_path.get()
         current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
 
