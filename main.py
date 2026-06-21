@@ -17,18 +17,21 @@ class LinkExtractorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("인터넷 바로가기(.url) 링크 & 가격 추출기")
-        self.root.geometry("550x260")
+        self.root.geometry("550x330")  # 라디오 버튼 배치를 위해 창 높이 최적화
         self.root.resizable(False, False)
 
         self.selected_path = tk.StringVar()
         self.exclude_words = tk.StringVar()
+        
+        # 옵션 상품 처리 방식을 선택하기 위한 변수 (기본값: 자동 모드)
+        self.option_mode = tk.StringVar(value="auto")
 
         self.create_widgets()
 
     def create_widgets(self):
         # 1. 폴더 선택 섹션
         folder_frame = tk.LabelFrame(self.root, text=" 1. 대상 폴더 지정 ", padx=10, pady=10)
-        folder_frame.pack(fill="x", padx=15, pady=10)
+        folder_frame.pack(fill="x", padx=15, pady=5)
 
         self.entry_path = tk.Entry(
             folder_frame, textvariable=self.selected_path, width=45, state="readonly"
@@ -52,7 +55,29 @@ class LinkExtractorApp:
         entry_filter.pack(fill="x", ipady=2)
         entry_filter.insert(0, "품절, 제외, 보류")
 
-        # 3. 실행 버튼 섹션
+        # 3. 옵션 상품 수집 모드 선택 섹션
+        mode_frame = tk.LabelFrame(
+            self.root, text=" 3. 옵션 상품 원가 수집 방식 설정 ", padx=10, pady=10
+        )
+        mode_frame.pack(fill="x", padx=15, pady=5)
+
+        rad_auto = tk.Radiobutton(
+            mode_frame, 
+            text="자동 모드 (옵션 무시, 화면에 보이는 기본 최저가 즉시 수집)", 
+            variable=self.option_mode, 
+            value="auto"
+        )
+        rad_auto.pack(anchor="w")
+
+        rad_manual = tk.Radiobutton(
+            mode_frame, 
+            text="반자동 모드 (상품별 3초 대기, 내가 직접 옵션을 클릭하여 수집)", 
+            variable=self.option_mode, 
+            value="manual"
+        )
+        rad_manual.pack(anchor="w")
+
+        # 4. 실행 버튼 섹션
         btn_start = tk.Button(
             self.root,
             text="폐쇄몰 로그인 및 링크·단가 일괄 추출",
@@ -60,9 +85,9 @@ class LinkExtractorApp:
             bg="#2ecc71",
             fg="white",
             command=self.start_extraction,
-            height=2,
+            height=2
         )
-        btn_start.pack(fill="x", padx=15, pady=15)
+        btn_start.pack(fill="x", padx=15, pady=10)
 
     def browse_folder(self):
         folder = filedialog.askdirectory(title="추출할 최상위 폴더를 선택하세요")
@@ -84,8 +109,9 @@ class LinkExtractorApp:
                 continue
         return None
 
-    def start_extraction(self):
+def start_extraction(self):
         base_dir = self.selected_path.get()
+        current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
 
         if not base_dir:
             messagebox.showwarning("경고", "먼저 링크를 추출할 폴더를 지정해 주세요.")
@@ -108,7 +134,7 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
-            driver.get("https://jy45321.imweb.me") 
+            driver.get("https://imweb.me") 
         except Exception as e:
             messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
             return
@@ -153,8 +179,14 @@ class LinkExtractorApp:
                         
                         try:
                             driver.get(url)
-                            time.sleep(1.8)  
                             
+                            # 반자동 모드일 경우 가격 수집 전에 사람이 옵션을 마우스로 클릭할 시간(3초) 제공
+                            if current_mode == "manual":
+                                time.sleep(3.0)
+                            else:
+                                time.sleep(1.8)  # 자동 모드는 기본 로딩 대기만 수행
+                            
+                            # 실시간 화면 전체 텍스트 수집
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
                             # 1) 원가 파싱: '총 상품금액' 추적
@@ -164,7 +196,8 @@ class LinkExtractorApp:
                                 if cost_match:
                                     cost_val = cost_match.group().replace(",", "").strip()
                             
-                            if not cost_val:
+                            # 자동 모드이거나, 반자동 모드에서 옵션을 안 골라 '총 상품금액'이 추출되지 않았을 때 기본 대표가 수집
+                            if not cost_val or cost_val == "0":
                                 try:
                                     price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
                                     cost_val = price_element.text.replace("원", "").replace(",", "").strip()
@@ -239,6 +272,7 @@ class LinkExtractorApp:
             )
 
 
+# 프로그램 정식 시작 지점 선언문
 if __name__ == "__main__":
     root = tk.Tk()
     app = LinkExtractorApp(root)
