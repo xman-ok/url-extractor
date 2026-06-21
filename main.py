@@ -108,7 +108,7 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
-            driver.get("https://imweb.me") 
+            driver.get("https://jy45321.imweb.me") 
         except Exception as e:
             messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
             return
