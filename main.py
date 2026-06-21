@@ -1,3 +1,4 @@
+Python
 import os
 import re
 import time
@@ -104,11 +105,13 @@ class LinkExtractorApp:
                         if clean_line.upper().startswith("URL="):
                             parts = clean_line.split("=", 1)
                             if len(parts) > 1:
-                                return parts.strip()
+                                return parts[1].strip()
             except Exception:
                 continue
         return None
-def start_extraction(self):
+
+    # ★ 이 부분의 들여쓰기(공백 4칸)를 수정했습니다.
+    def start_extraction(self):
         base_dir = self.selected_path.get()
         current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
 
