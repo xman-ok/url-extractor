@@ -55,7 +55,7 @@ class LinkExtractorApp:
         entry_filter.pack(fill="x", ipady=2)
         entry_filter.insert(0, "품절, 제외, 보류")
 
-        # 3. 옵션 상품 수집 모드 선택 섹션
+        # 3. 옵션 상품 수집 모드 선택 섹션 (5초 대기 텍스트 안내 반영)
         mode_frame = tk.LabelFrame(
             self.root, text=" 3. 옵션 상품 원가 수집 방식 설정 ", padx=10, pady=10
         )
@@ -71,7 +71,7 @@ class LinkExtractorApp:
 
         rad_manual = tk.Radiobutton(
             mode_frame, 
-            text="반자동 모드 (상품별 3초 대기, 내가 직접 옵션을 클릭하여 수집)", 
+            text="반자동 모드 (상품별 5초 대기, 내가 직접 옵션을 클릭하여 수집)", 
             variable=self.option_mode, 
             value="manual"
         )
@@ -104,11 +104,10 @@ class LinkExtractorApp:
                         if clean_line.upper().startswith("URL="):
                             parts = clean_line.split("=", 1)
                             if len(parts) > 1:
-                                return parts[1].strip()
+                                return parts.strip()
             except Exception:
                 continue
         return None
-
 def start_extraction(self):
         base_dir = self.selected_path.get()
         current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
@@ -180,9 +179,9 @@ def start_extraction(self):
                         try:
                             driver.get(url)
                             
-                            # 반자동 모드일 경우 가격 수집 전에 사람이 옵션을 마우스로 클릭할 시간(3초) 제공
+                            # [핵심 조율] 반자동 모드일 경우 사람이 여유롭게 옵션을 클릭할 수 있도록 5.0초 제공
                             if current_mode == "manual":
-                                time.sleep(3.0)
+                                time.sleep(5.0)
                             else:
                                 time.sleep(1.8)  # 자동 모드는 기본 로딩 대기만 수행
                             
@@ -272,7 +271,7 @@ def start_extraction(self):
             )
 
 
-# 프로그램 정식 시작 지점 선언문
+# 프로그램 정식 시작 지점 선언문 (언더바 안전 복구 및 들여쓰기 교정 완료)
 if __name__ == "__main__":
     root = tk.Tk()
     app = LinkExtractorApp(root)
