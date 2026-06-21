@@ -108,7 +108,7 @@ class LinkExtractorApp:
             except Exception:
                 continue
         return None
-def start_extraction(self):
+        def start_extraction(self):
         base_dir = self.selected_path.get()
         current_mode = self.option_mode.get()  # 사용자가 라디오 버튼으로 고른 모드 값
 
@@ -169,7 +169,7 @@ def start_extraction(self):
                         rel_path = os.path.relpath(root_dir, base_dir)
                         category_name = "최상위 폴더" if rel_path == "." else rel_path.replace(os.sep, " > ")
                         
-                        # 튜플 에러 방지 처리 완료 (순수 문자열 상품명 분리)
+                        # 파일명에서 확장자를 제외한 깨끗한 문자열 추출
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
@@ -179,7 +179,7 @@ def start_extraction(self):
                         try:
                             driver.get(url)
                             
-                            # [핵심 조율] 반자동 모드일 경우 사람이 여유롭게 옵션을 클릭할 수 있도록 5.0초 제공
+                            # 반자동 모드일 경우 사람이 여유롭게 옵션을 클릭할 수 있도록 5.0초 제공
                             if current_mode == "manual":
                                 time.sleep(5.0)
                             else:
@@ -195,7 +195,7 @@ def start_extraction(self):
                                 if cost_match:
                                     cost_val = cost_match.group().replace(",", "").strip()
                             
-                            # 자동 모드이거나, 반자동 모드에서 옵션을 안 골라 '총 상품금액'이 추출되지 않았을 때 기본 대표가 수집
+                            # 자동 모드이거나 옵션을 선택하지 않아 '총 상품금액'이 없을 때 기본가 수집
                             if not cost_val or cost_val == "0":
                                 try:
                                     price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
@@ -271,7 +271,7 @@ def start_extraction(self):
             )
 
 
-# 프로그램 정식 시작 지점 선언문 (언더바 안전 복구 및 들여쓰기 교정 완료)
+# 프로그램 정식 시작 지점 선언문
 if __name__ == "__main__":
     root = tk.Tk()
     app = LinkExtractorApp(root)
