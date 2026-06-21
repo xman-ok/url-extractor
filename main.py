@@ -134,7 +134,6 @@ class LinkExtractorApp:
             options.add_experimental_option("useAutomationExtension", False)
             
             driver = webdriver.Chrome(options=options)
-            # ★ 요청하신 대로 대기용 첫 접속 주소를 폐쇄몰 메인 도메인으로 즉시 변경했습니다.
             driver.get("https://jy45321.imweb.me") 
         except Exception as e:
             messagebox.showerror("브라우저 실행 오류", f"크롬 브라우저를 실행할 수 없습니다.\n{e}")
@@ -146,8 +145,9 @@ class LinkExtractorApp:
         ws = wb.active
         ws.title = "링크 목록"
         
+        # ★ "지역" 열을 "카테고리" 앞에 추가
         headers = [
-            "카테고리", "상품명", "판매가", "배송비", "공급처", 
+            "지역", "카테고리", "상품명", "판매가", "배송비", "공급처", 
             "원가", "나의 배송비", "포장비", "판매처", "수수료(%)", 
             "수수료", "부가세", "마진", "마진율"
         ]
@@ -171,7 +171,6 @@ class LinkExtractorApp:
                         rel_path = os.path.relpath(root_dir, base_dir)
                         category_name = "최상위 폴더" if rel_path == "." else rel_path.replace(os.sep, " > ")
                         
-                        # 파일명에서 확장자를 제외한 깨끗한 문자열 추출
                         product_name = os.path.splitext(file)[0]
                         hyperlink_formula = f'=HYPERLINK("{url}", "{url}")'
 
@@ -181,29 +180,23 @@ class LinkExtractorApp:
                         try:
                             driver.get(url)
                             
-                            # 반자동 모드일 경우 사람이 여유롭게 옵션을 클릭할 수 있도록 5.0초 제공
                             if current_mode == "manual":
                                 time.sleep(5.0)
                             else:
-                                time.sleep(1.8)  # 자동 모드는 기본 로딩 대기만 수행
+                                time.sleep(1.8)
                             
-                            # 실시간 화면 전체 텍스트 수집
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
-                            # 1) 원가 파싱: '총 상품금액' 추적 및 괄호 수량 건너뛰기 규칙 적용
                             if "총 상품금액" in page_text:
                                 cost_part = page_text.split("총 상품금액", 1)[1]
-                                # (1개), (2개) 뒤에 나오는 진짜 원가 숫자만 타겟팅
                                 cost_match = re.search(r'\(\d+개\)\s*([\d,]+)', cost_part)
                                 if cost_match:
                                     cost_val = cost_match.group(1).replace(",", "").strip()
                                 else:
-                                    # 만약 옵션을 안 골라서 (X개) 표시가 없을 때를 대비한 백업용 기존 파싱
                                     cost_match = re.search(r'[\d,]+', cost_part)
                                     if cost_match:
                                         cost_val = cost_match.group().replace(",", "").strip()
                             
-                            # 자동 모드이거나 옵션을 선택하지 않아 '총 상품금액'이 아예 없을 때 기본가 수집
                             if not cost_val or cost_val == "0":
                                 try:
                                     price_element = driver.find_element(By.CSS_SELECTOR, "span.shop_item_price")
@@ -211,7 +204,6 @@ class LinkExtractorApp:
                                 except:
                                     pass
 
-                            # 2) 배송비 파싱: '기본' 추적 및 무료 분기
                             if "기본" in page_text:
                                 delivery_part = page_text.split("기본", 1)[1].strip()
                                 target_area = delivery_part[:15]
@@ -227,11 +219,50 @@ class LinkExtractorApp:
                             cost_val = "오류(재확인)"
                             delivery_fee_val = "오류"
 
+                        # 수식용 숫자 타입 변환 유틸 기능
+                        def convert_to_numeric(val):
+                            if val is None or val == "" or str(val).lower() == "오류":
+                                return 0
+                            val_str = str(val).strip()
+                            if val_str.isdigit():
+                                return int(val_str)
+                            return val
+
+                        cost_num = convert_to_numeric(cost_val)
+                        delivery_num = convert_to_numeric(delivery_fee_val)
+
+                        # ★ 엑셀 수식 자동 작성을 위한 행 인덱스 계산 (헤더가 1이므로 데이터는 count + 2부터 시작)
+                        r = count + 2
+
+                        # 요청 사양에 따른 엑셀 실시간 계산 수식 매핑
+                        # A=지역, B=카테고리, C=상품명, D=판매가, E=배송비, F=공급처, G=원가, H=나의 배송비, I=포장비, J=판매처, K=수수료(%), L=수수료, M=부가세, N=마진, O=마진율
+                        fee_formula = f"=D{r}*K{r}+E{r}*0"
+                        margin_formula = f"=D{r}+E{r}-G{r}-H{r}-I{r}-M{r}-L{r}"
+                        margin_rate_formula = f"=IF(D{r}>0, N{r}/D{r}, 0)"
+
                         row_data = [
-                            category_name, product_name, "", delivery_fee_val, hyperlink_formula,
-                            cost_val, "", "", "", "", "", "", "", ""
+                            "",                  # 지역 (공란)
+                            category_name,       # 카테고리
+                            product_name,        # 상품명
+                            "",                  # 판매가 (공란)
+                            delivery_num,        # 배송비
+                            hyperlink_formula,   # 공급처
+                            cost_num,            # 원가
+                            delivery_num,        # 나의 배송비 (=배송비와 동일)
+                            0,                   # 포장비
+                            "당근마켓",          # 판매처
+                            0.00,                # 수수료(%)
+                            fee_formula,         # 수수료 수식
+                            0,                   # 부가세
+                            margin_formula,      # 마진 수식
+                            margin_rate_formula  # 마진율 수식
                         ]
                         ws.append(row_data)
+
+                        # 퍼센트(%) 형식 표시 바인딩 정의
+                        ws.cell(row=r, column=11).number_format = '0.00%' # 수수료(%) 열
+                        ws.cell(row=r, column=15).number_format = '0.00%' # 마진율 열
+                        
                         count += 1
 
         driver.quit()  
@@ -263,15 +294,24 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
+                # ★ [핵심 파일 중복 피하기 규칙] 기존 파일 잠김 시 순번 붙여 저장하기
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
-                wb.save(output_path)
+                file_counter = 1
+                while True:
+                    try:
+                        wb.save(output_path)
+                        break
+                    except PermissionError:
+                        output_path = os.path.join(base_dir, f"Link_List ({file_counter}).xlsx")
+                        file_counter += 1
+
                 messagebox.showinfo(
                     "성공", 
-                    f"총 {count}개의 데이터 및 단가 추출 완료!\n\n확인을 누르면 마진 계산서 양식의 엑셀 파일이 열립니다."
+                    f"총 {count}개의 데이터 추출 완료!\n\n저장 경로: {os.path.basename(output_path)}\n\n확인을 누르면 계산서 서식 파일이 자동 열림 처리됩니다."
                 )
                 os.startfile(output_path)
             except Exception as e:
-                messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 저장하거나 여는 도중 에러가 발생했습니다:\n{e}")
+                messagebox.showerror("엑셀 저장 오류", f"엑셀 파일을 최종 마무리하는 도중 예기치 못한 에러가 발생했습니다:\n{e}")
         else:
             messagebox.showwarning(
                 "실패", 
