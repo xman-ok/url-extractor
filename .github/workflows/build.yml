@@ -27,9 +27,9 @@ jobs:
         pip install openpyxl pyinstaller selenium requests
 
     - name: EXE 파일로 빌드
-      # [핵심 수정] 파이엔스톨러가 셀레니움 내부 가상 옵션을 누락시키지 않도록 강제 포장 명령 추가
+      # [핵심 수정] 셀레니움 가상 웹드라이버 모듈이 포장에서 누락되지 않도록 --hidden-import 구문 정밀 보완
       run: |
-        pyinstaller --onefile --windowed --hidden-import=selenium.webdriver.chrome.options --hidden-import=selenium.webdriver.common.by main.py
+        pyinstaller --onefile --windowed --hidden-import=selenium --hidden-import=selenium.webdriver --hidden-import=selenium.webdriver.chrome.webdriver --hidden-import=selenium.webdriver.chrome.options --hidden-import=selenium.webdriver.common.by main.py
 
     - name: 완성된 파일 업로드
       uses: actions/upload-artifact@v4.6.0
