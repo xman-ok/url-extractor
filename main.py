@@ -145,7 +145,8 @@ class LinkExtractorApp:
         ws = wb.active
         ws.title = "링크 목록"
         
-        # ★ "지역" 열을 "카테고리" 앞에 추가
+        # 열 매핑 규칙 가이드
+        # A=지역, B=카테고리, C=상품명, D=판매가, E=배송비, F=공급처, G=원가, H=나의 배송비, I=포장비, J=판매처, K=수수료(%), L=수수료, M=부가세, N=마진, O=마진율
         headers = [
             "지역", "카테고리", "상품명", "판매가", "배송비", "공급처", 
             "원가", "나의 배송비", "포장비", "판매처", "수수료(%)", 
@@ -219,7 +220,6 @@ class LinkExtractorApp:
                             cost_val = "오류(재확인)"
                             delivery_fee_val = "오류"
 
-                        # 수식용 숫자 타입 변환 유틸 기능
                         def convert_to_numeric(val):
                             if val is None or val == "" or str(val).lower() == "오류":
                                 return 0
@@ -231,13 +231,16 @@ class LinkExtractorApp:
                         cost_num = convert_to_numeric(cost_val)
                         delivery_num = convert_to_numeric(delivery_fee_val)
 
-                        # ★ 엑셀 수식 자동 작성을 위한 행 인덱스 계산 (헤더가 1이므로 데이터는 count + 2부터 시작)
+                        # 행 인덱스 계산 (데이터는 2번째 줄부터 시작)
                         r = count + 2
 
-                        # 요청 사양에 따른 엑셀 실시간 계산 수식 매핑
-                        # A=지역, B=카테고리, C=상품명, D=판매가, E=배송비, F=공급처, G=원가, H=나의 배송비, I=포장비, J=판매처, K=수수료(%), L=수수료, M=부가세, N=마진, O=마진율
+                        # ★ [수식 수정 반영 영역]
                         fee_formula = f"=D{r}*K{r}+E{r}*0"
+                        # 1. 부가세 수식: =(판매가+배송비)*10%-(원가+나의배송비+포장비+수수료)*10%
+                        vat_formula = f"=(D{r}+E{r})*10%-(G{r}+H{r}+I{r}+L{r})*10%"
+                        # 2. 마진 수식: =판매가+배송비-원가-나의배송비-포장비-부가세-수수료
                         margin_formula = f"=D{r}+E{r}-G{r}-H{r}-I{r}-M{r}-L{r}"
+                        # 3. 마진율 수식: =IF(판매가>0, 마진/판매가, 0)
                         margin_rate_formula = f"=IF(D{r}>0, N{r}/D{r}, 0)"
 
                         row_data = [
@@ -253,13 +256,13 @@ class LinkExtractorApp:
                             "당근마켓",          # 판매처
                             0.00,                # 수수료(%)
                             fee_formula,         # 수수료 수식
-                            0,                   # 부가세
-                            margin_formula,      # 마진 수식
-                            margin_rate_formula  # 마진율 수식
+                            vat_formula,         # 부가세 수식 (수정 반영)
+                            margin_formula,      # 마진 수식 (수정 반영)
+                            margin_rate_formula  # 마진율 수식 (수정 반영)
                         ]
                         ws.append(row_data)
 
-                        # 퍼센트(%) 형식 표시 바인딩 정의
+                        # 퍼센트(%) 형식 표시 설정
                         ws.cell(row=r, column=11).number_format = '0.00%' # 수수료(%) 열
                         ws.cell(row=r, column=15).number_format = '0.00%' # 마진율 열
                         
@@ -294,7 +297,7 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-                # ★ [핵심 파일 중복 피하기 규칙] 기존 파일 잠김 시 순번 붙여 저장하기
+                # 파일 잠김 회피용 번호 부여 규칙 유지
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 file_counter = 1
                 while True:
