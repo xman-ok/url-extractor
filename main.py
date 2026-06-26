@@ -55,7 +55,7 @@ class LinkExtractorApp:
         entry_filter.pack(fill="x", ipady=2)
         entry_filter.insert(0, "품절, 제외, 보류")
 
-        # 3. 옵션 상품 수집 모드 선택 섹션 (스마트 가변 대기 방식 안내 수정)
+        # 3. 옵션 상품 수집 모드 선택 섹션
         mode_frame = tk.LabelFrame(
             self.root, text=" 3. 옵션 상품 원가 수집 방식 설정 ", padx=10, pady=10
         )
@@ -150,9 +150,14 @@ class LinkExtractorApp:
         # 2) 설정 시트 추가 생성 및 변수 고정 기본값 배치
         ws_config = wb.create_sheet(title="설정")
         ws_config.append(["환경변수 항목", "설정값"])
-        ws_config.append(["기본 포장비", 0])          
-        ws_config.append(["기본 수수료(%)", 0.00])    
-        ws_config.append(["기본 판매처", "당근마켓"]) 
+        ws_config.append(["기본 포장비", 0])          # 설정!$B$2 위치
+        ws_config.append(["기본 수수료(%)", 0.00])    # 설정!$B$3 위치
+        ws_config.append(["기본 판매처", "당근마켓"]) # 설정!$B$4 위치
+        
+        # ★ [추가] 설정 시트에 부가세 산출 공식을 시각적/관리용 항목으로 추가 (설정!$B$5 위치)
+        ws_config.append(["기본 부가세 수식", "=(판매가+배송비)*10%-(원가+나의 배송비+포장비+수수료)*10%"])
+        
+        # 셀 서식 지정 (수수료 퍼센트 포맷팅)
         ws_config.cell(row=3, column=2).number_format = '0.00%' 
         
         # 열 매핑 가이드 (A~O)
@@ -190,11 +195,10 @@ class LinkExtractorApp:
                         try:
                             driver.get(url)
                             
-                            # ---- ★ [반자동 모드: 인공지능형 가변 대기 로직 시작] ----
+                            # ---- [반자동 모드: 인공지능형 가변 대기 로직] ----
                             if current_mode == "manual":
-                                time.sleep(1.0)  # 최초 기본 페이지 뼈대 로딩 대기
+                                time.sleep(1.0)  
                                 
-                                # 비옵션 상품 선별 전처리 (옵션이 없는 상품은 불필요하게 60초를 채우지 않도록 유연하게 패스)
                                 has_options = False
                                 try:
                                     view_container = driver.find_elements(By.CSS_SELECTOR, "#shop_view, .shop_view, .shop-view")
@@ -206,16 +210,13 @@ class LinkExtractorApp:
                                 except:
                                     has_options = True
 
-                                # 옵션 상품이면 최대 60초 허용, 일반 상품이면 0.8초만 가볍게 확인
                                 max_wait = 60.0 if has_options else 0.8
                                 start_time = time.time()
                                 
-                                # 가변 모니터링 루프 시작 (리소스 점유율 최적화)
                                 while time.time() - start_time < max_wait:
                                     page_text = driver.find_element(By.TAG_NAME, "body").text
                                     temp_cost = ""
                                     
-                                    # 사용자가 옵션을 클릭해 '총 상품금액'과 금액 숫자가 완벽히 매칭되었는지 실시간 체크
                                     if "총 상품금액" in page_text:
                                         cost_part = page_text.split("총 상품금액", 1)[1]
                                         cost_match = re.search(r'\(\d+개\)\s*([\d,]+)', cost_part)
@@ -226,17 +227,14 @@ class LinkExtractorApp:
                                             if cost_match:
                                                 temp_cost = cost_match.group().replace(",", "").strip()
                                     
-                                    # 정상 금액 확인 시 즉시 대기를 중단하고 다음 코드로 진행!
                                     if temp_cost and temp_cost != "0" and temp_cost.isdigit():
                                         break
                                     
-                                    # 중요: 0.5초 간격으로 양보(sleep)하여 컴퓨터 CPU 사용량을 완벽하게 낮춤
                                     time.sleep(0.5)
                             else:
-                                time.sleep(1.8) # 자동 모드는 기존처럼 기본 1.8초 로딩 대기만 수행
+                                time.sleep(1.8) 
                             # ---- [가변 대기 로직 끝] ----
                             
-                            # 최신 변경 상태로 최종 데이터 텍스트 확정 파싱
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
                             if "총 상품금액" in page_text:
@@ -245,9 +243,9 @@ class LinkExtractorApp:
                                 if cost_match:
                                     cost_val = cost_match.group(1).replace(",", "").strip()
                                 else:
-                                    cost_match = re.search(r'[\d,]+', cost_part)
-                                    if cost_match:
-                                        cost_val = cost_match.group().replace(",", "").strip()
+                                    re_match = re.search(r'[\d,]+', cost_part)
+                                    if re_match:
+                                        cost_val = re_match.group().replace(",", "").strip()
                             
                             if not cost_val or cost_val == "0":
                                 try:
@@ -291,7 +289,11 @@ class LinkExtractorApp:
                         config_fee_rate = "=설정!$B$3"     
 
                         fee_formula = f"=D{r}*K{r}+E{r}*0"
+                        
+                        # ★ 요청하신 수식이 메인 시트의 각 행에 맞게 동적 적용됩니다.
+                        # D(판매가) + E(배송비) - G(원가) - H(나의 배송비) - I(포장비) - L(수수료)
                         vat_formula = f"=(D{r}+E{r})*10%-(G{r}+H{r}+I{r}+L{r})*10%"
+                        
                         margin_formula = f"=D{r}+E{r}-G{r}-H{r}-I{r}-M{r}-L{r}"
                         margin_rate_formula = f"=IF(D{r}>0, N{r}/D{r}, 0)"
 
@@ -308,7 +310,7 @@ class LinkExtractorApp:
                             config_market,       # 판매처 수식 연동
                             config_fee_rate,     # 수수료(%) 수식 연동
                             fee_formula,         # 수수료 결과 수식
-                            vat_formula,         # 부가세 결과 수식
+                            vat_formula,         # 부가세 결과 수식 (요청하신 공식 빌드 완료)
                             margin_formula,      # 마진 결과 수식
                             margin_rate_formula  # 마진율 결과 수식
                         ]
@@ -349,8 +351,9 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
+                # 설정 시트 가독성을 위해 열 너비 최적화 (수식이 길어 B열을 넓게 확보)
                 ws_config.column_dimensions['A'].width = 20
-                ws_config.column_dimensions['B'].width = 15
+                ws_config.column_dimensions['B'].width = 65
 
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 file_counter = 1
