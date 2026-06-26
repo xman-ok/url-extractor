@@ -55,7 +55,7 @@ class LinkExtractorApp:
         entry_filter.pack(fill="x", ipady=2)
         entry_filter.insert(0, "품절, 제외, 보류")
 
-        # 3. 옵션 상품 수집 모드 선택 섹션 (5초 대기 텍스트 안내 반영)
+        # 3. 옵션 상품 수집 모드 선택 섹션 (스마트 가변 대기 방식 안내 수정)
         mode_frame = tk.LabelFrame(
             self.root, text=" 3. 옵션 상품 원가 수집 방식 설정 ", padx=10, pady=10
         )
@@ -71,7 +71,7 @@ class LinkExtractorApp:
 
         rad_manual = tk.Radiobutton(
             mode_frame, 
-            text="반자동 모드 (상품별 5초 대기, 내가 직접 옵션을 클릭하여 수집)", 
+            text="반자동 모드 (선택 감지 즉시 다음 이동, 미선택 시 최대 60초 대기)", 
             variable=self.option_mode, 
             value="manual"
         )
@@ -142,11 +142,20 @@ class LinkExtractorApp:
         messagebox.showinfo("대기 중", "로그인을 마쳤다면 이 창의 [확인]을 누르세요. 추출을 시작합니다.")
 
         wb = Workbook()
+        
+        # 1) 메인 시트 생성 및 초기화
         ws = wb.active
         ws.title = "링크 목록"
         
-        # 열 매핑 규칙 가이드
-        # A=지역, B=카테고리, C=상품명, D=판매가, E=배송비, F=공급처, G=원가, H=나의 배송비, I=포장비, J=판매처, K=수수료(%), L=수수료, M=부가세, N=마진, O=마진율
+        # 2) 설정 시트 추가 생성 및 변수 고정 기본값 배치
+        ws_config = wb.create_sheet(title="설정")
+        ws_config.append(["환경변수 항목", "설정값"])
+        ws_config.append(["기본 포장비", 0])          
+        ws_config.append(["기본 수수료(%)", 0.00])    
+        ws_config.append(["기본 판매처", "당근마켓"]) 
+        ws_config.cell(row=3, column=2).number_format = '0.00%' 
+        
+        # 열 매핑 가이드 (A~O)
         headers = [
             "지역", "카테고리", "상품명", "판매가", "배송비", "공급처", 
             "원가", "나의 배송비", "포장비", "판매처", "수수료(%)", 
@@ -181,11 +190,53 @@ class LinkExtractorApp:
                         try:
                             driver.get(url)
                             
+                            # ---- ★ [반자동 모드: 인공지능형 가변 대기 로직 시작] ----
                             if current_mode == "manual":
-                                time.sleep(5.0)
+                                time.sleep(1.0)  # 최초 기본 페이지 뼈대 로딩 대기
+                                
+                                # 비옵션 상품 선별 전처리 (옵션이 없는 상품은 불필요하게 60초를 채우지 않도록 유연하게 패스)
+                                has_options = False
+                                try:
+                                    view_container = driver.find_elements(By.CSS_SELECTOR, "#shop_view, .shop_view, .shop-view")
+                                    if view_container:
+                                        if view_container[0].find_elements(By.CSS_SELECTOR, "select, .option_select, .opt_block, [class*='option']"):
+                                            has_options = True
+                                    else:
+                                        has_options = True
+                                except:
+                                    has_options = True
+
+                                # 옵션 상품이면 최대 60초 허용, 일반 상품이면 0.8초만 가볍게 확인
+                                max_wait = 60.0 if has_options else 0.8
+                                start_time = time.time()
+                                
+                                # 가변 모니터링 루프 시작 (리소스 점유율 최적화)
+                                while time.time() - start_time < max_wait:
+                                    page_text = driver.find_element(By.TAG_NAME, "body").text
+                                    temp_cost = ""
+                                    
+                                    # 사용자가 옵션을 클릭해 '총 상품금액'과 금액 숫자가 완벽히 매칭되었는지 실시간 체크
+                                    if "총 상품금액" in page_text:
+                                        cost_part = page_text.split("총 상품금액", 1)[1]
+                                        cost_match = re.search(r'\(\d+개\)\s*([\d,]+)', cost_part)
+                                        if cost_match:
+                                            temp_cost = cost_match.group(1).replace(",", "").strip()
+                                        else:
+                                            cost_match = re.search(r'[\d,]+', cost_part)
+                                            if cost_match:
+                                                temp_cost = cost_match.group().replace(",", "").strip()
+                                    
+                                    # 정상 금액 확인 시 즉시 대기를 중단하고 다음 코드로 진행!
+                                    if temp_cost and temp_cost != "0" and temp_cost.isdigit():
+                                        break
+                                    
+                                    # 중요: 0.5초 간격으로 양보(sleep)하여 컴퓨터 CPU 사용량을 완벽하게 낮춤
+                                    time.sleep(0.5)
                             else:
-                                time.sleep(1.8)
+                                time.sleep(1.8) # 자동 모드는 기존처럼 기본 1.8초 로딩 대기만 수행
+                            # ---- [가변 대기 로직 끝] ----
                             
+                            # 최신 변경 상태로 최종 데이터 텍스트 확정 파싱
                             page_text = driver.find_element(By.TAG_NAME, "body").text
                             
                             if "총 상품금액" in page_text:
@@ -234,13 +285,14 @@ class LinkExtractorApp:
                         # 행 인덱스 계산 (데이터는 2번째 줄부터 시작)
                         r = count + 2
 
-                        # ★ [수식 수정 반영 영역]
+                        # 설정 시트 절대 참조 수식 연결 연동
+                        config_packing = "=설정!$B$2"      
+                        config_market = "=설정!$B$4"       
+                        config_fee_rate = "=설정!$B$3"     
+
                         fee_formula = f"=D{r}*K{r}+E{r}*0"
-                        # 1. 부가세 수식: =(판매가+배송비)*10%-(원가+나의배송비+포장비+수수료)*10%
                         vat_formula = f"=(D{r}+E{r})*10%-(G{r}+H{r}+I{r}+L{r})*10%"
-                        # 2. 마진 수식: =판매가+배송비-원가-나의배송비-포장비-부가세-수수료
                         margin_formula = f"=D{r}+E{r}-G{r}-H{r}-I{r}-M{r}-L{r}"
-                        # 3. 마진율 수식: =IF(판매가>0, 마진/판매가, 0)
                         margin_rate_formula = f"=IF(D{r}>0, N{r}/D{r}, 0)"
 
                         row_data = [
@@ -252,19 +304,19 @@ class LinkExtractorApp:
                             hyperlink_formula,   # 공급처
                             cost_num,            # 원가
                             delivery_num,        # 나의 배송비 (=배송비와 동일)
-                            0,                   # 포장비
-                            "당근마켓",          # 판매처
-                            0.00,                # 수수료(%)
-                            fee_formula,         # 수수료 수식
-                            vat_formula,         # 부가세 수식 (수정 반영)
-                            margin_formula,      # 마진 수식 (수정 반영)
-                            margin_rate_formula  # 마진율 수식 (수정 반영)
+                            config_packing,      # 포장비 수식 연동
+                            config_market,       # 판매처 수식 연동
+                            config_fee_rate,     # 수수료(%) 수식 연동
+                            fee_formula,         # 수수료 결과 수식
+                            vat_formula,         # 부가세 결과 수식
+                            margin_formula,      # 마진 결과 수식
+                            margin_rate_formula  # 마진율 결과 수식
                         ]
                         ws.append(row_data)
 
                         # 퍼센트(%) 형식 표시 설정
-                        ws.cell(row=r, column=11).number_format = '0.00%' # 수수료(%) 열
-                        ws.cell(row=r, column=15).number_format = '0.00%' # 마진율 열
+                        ws.cell(row=r, column=11).number_format = '0.00%' 
+                        ws.cell(row=r, column=15).number_format = '0.00%' 
                         
                         count += 1
 
@@ -297,7 +349,9 @@ class LinkExtractorApp:
                                 max_len = calc_len
                     ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-                # 파일 잠김 회피용 번호 부여 규칙 유지
+                ws_config.column_dimensions['A'].width = 20
+                ws_config.column_dimensions['B'].width = 15
+
                 output_path = os.path.join(base_dir, "Link_List.xlsx")
                 file_counter = 1
                 while True:
